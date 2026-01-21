@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gomoku RL Web</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="app compact">
+      <main class="board-wrap compact two-col">
+        <section class="board-area compact">
+          <div class="board-top compact">
+            <div class="title-block">
+              <p class="eyebrow">Gomoku RL</p>
+              <h1>AlphaZero-Style Arena</h1>
+              <p class="sub">Play fast. See search unfold.</p>
+            </div>
+            <div class="board-controls compact">
+              <div class="row">
+                <label>Start game / Play as</label>
+                <div class="row-inline triple-buttons">
+                  <button id="newGame" class="cta">New game</button>
+                  <div class="pill-group inline" id="humanSide">
+                    <button data-side="x" class="pill active">Play Black (First)</button>
+                    <button data-side="o" class="pill">Play White (Second)</button>
+                  </div>
+                </div>
+                <div class="meta">AI plays the other side.</div>
+              </div>
+              <div class="row status">
+                <label>Current analysis</label>
+                <div id="statusText">Click New game to start.</div>
+                <div class="eval">
+                  <span id="evalText">AZ eval: N/A</span>
+                  <div class="eval-bar">
+                    <div class="eval-fill" id="evalFill"></div>
+                  </div>
+                </div>
+                <div class="meta" id="aiProb">AI move prob: N/A</div>
+              </div>
+            </div>
+          </div>
+          <canvas id="board" width="560" height="560"></canvas>
+          <div class="hint">
+            Click a grid intersection to place a stone. Orange glows and labels show
+            the AI's move probabilities; the last move is outlined.
+          </div>
+          <div class="panel compact config-panel">
+            <div class="row">
+              <label>Search sims</label>
+              <input id="sims" type="number" min="50" max="5000" value="800" />
+            </div>
+            <div class="row">
+              <label>Device</label>
+              <div class="row-inline">
+                <input id="deviceInput" type="text" value="cpu" />
+                <button id="applyConfig" class="mini">Apply</button>
+              </div>
+              <div class="meta" id="deviceInfo">Server: cpu</div>
+            </div>
+            <div class="row">
+              <label>AZ model path</label>
+              <div class="row-inline">
+                <input id="azModel" type="text" value="artifacts/az_model.pt" />
+                <button id="reloadModel" class="mini">Reload</button>
+              </div>
+              <div class="meta" id="modelInfo">Model: not loaded</div>
+              <div class="meta" id="modelTime">Model file: N/A</div>
+            </div>
+          </div>
+        </section>
+        <aside class="policy-box compact analysis-panel">
+          <div class="policy-title">落子分析</div>
+          <div id="policyList" class="policy-list">N/A</div>
+          <div class="policy-title">MCTS breakdown</div>
+          <div class="meta mcts-note">
+            pi = visits / total; PUCT = Q + U, U = c_puct * P * sqrt(N) / (1 + n)
+          </div>
+          <div id="mctsList" class="policy-list mcts-list">N/A</div>
+        </aside>
+      </main>
+    </div>
+
+    <div id="resultModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-title" id="resultTitle">Game Over</div>
+        <div class="modal-body" id="resultBody"></div>
+        <div class="modal-actions">
+          <button id="closeModal" class="mini">Close</button>
+          <button id="newFromModal" class="cta">New game</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+[project]
+name = "qipai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.7",
+    "flask>=3.0",
+    "tqdm>=4.66",
+    "torchvision>=0.24.1",
+    "numpy>=2.4.1",
+]

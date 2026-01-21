@@ -1,0 +1,15 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Training artifacts
+artifacts/
+artifacts/az_model.pt
+artifacts/human_games.jsonl
