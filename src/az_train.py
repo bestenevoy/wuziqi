@@ -307,7 +307,7 @@ def _self_play_worker(
 
     pid = os.getpid()
     # 打印启动日志
-    print(f"[Worker {pid}] Started on {device_str}. Loading model...", flush=True)
+    # print(f"[Worker {pid}] Started on {device_str}. Loading model...", flush=True)
 
     try:
         random.seed(seed)

@@ -2,11 +2,13 @@
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const statusText = document.getElementById("statusText");
+const statusRow = document.querySelector(".row.status");
 const evalText = document.getElementById("evalText");
-const evalFill = document.getElementById("evalFill");
+const evalChart = document.getElementById("evalChart");
 const simsInput = document.getElementById("sims");
 const newGameBtn = document.getElementById("newGame");
 const humanSide = document.getElementById("humanSide");
+const analysisOnlyInput = document.getElementById("analysisOnly");
 const deviceInput = document.getElementById("deviceInput");
 const deviceInfo = document.getElementById("deviceInfo");
 const azModelInput = document.getElementById("azModel");
@@ -14,8 +16,8 @@ const applyConfigBtn = document.getElementById("applyConfig");
 const modelInfo = document.getElementById("modelInfo");
 const modelTime = document.getElementById("modelTime");
 const reloadModelBtn = document.getElementById("reloadModel");
+const undoMoveBtn = document.getElementById("undoMove");
 const policyListEl = document.getElementById("policyList");
-const aiProbEl = document.getElementById("aiProb");
 const mctsListEl = document.getElementById("mctsList");
 const analysisPanel = document.querySelector(".analysis-panel");
 
@@ -32,6 +34,10 @@ let lastBoard = board.slice();
 let lastAiMove = null;
 let lastMcts = null;
 let showPolicyOverlay = false;
+let evalHistory = [];
+let analysisOnly = false;
+let hoverMove = null;
+let pendingMove = false;
 
 const size = 15;
 const pad = 34;
@@ -42,6 +48,7 @@ const resultTitle = document.getElementById("resultTitle");
 const resultBody = document.getElementById("resultBody");
 const closeModal = document.getElementById("closeModal");
 const newFromModal = document.getElementById("newFromModal");
+const evalCtx = evalChart ? evalChart.getContext("2d") : null;
 
 function resizeBoard() {
   // Scale the canvas on small screens.
@@ -50,6 +57,16 @@ function resizeBoard() {
   canvas.height = target;
   cell = (target - pad * 2) / (size - 1);
   drawBoard();
+}
+
+function resizeEvalChart() {
+  if (!evalChart || !evalCtx) return;
+  const rect = evalChart.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  evalChart.width = Math.max(1, Math.floor(rect.width * dpr));
+  evalChart.height = Math.max(1, Math.floor(rect.height * dpr));
+  evalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawEvalChart();
 }
 
 function setPolicy(probList) {
@@ -62,6 +79,59 @@ function setPolicy(probList) {
   }
   renderPolicyList(probList, policyListEl, 6);
   drawBoard();
+}
+
+function drawEvalChart() {
+  if (!evalChart || !evalCtx) return;
+  const width = evalChart.getBoundingClientRect().width;
+  const height = evalChart.getBoundingClientRect().height;
+  evalCtx.clearRect(0, 0, width, height);
+  evalCtx.fillStyle = "#f6ead8";
+  evalCtx.fillRect(0, 0, width, height);
+
+  const padding = 14;
+  const chartW = width - padding * 2;
+  const chartH = height - padding * 2;
+  const originX = padding;
+  const originY = padding;
+
+  // Center line (0 advantage).
+  evalCtx.strokeStyle = "rgba(120, 95, 70, 0.35)";
+  evalCtx.lineWidth = 1;
+  evalCtx.beginPath();
+  evalCtx.moveTo(originX, originY + chartH / 2);
+  evalCtx.lineTo(originX + chartW, originY + chartH / 2);
+  evalCtx.stroke();
+
+  const values = evalHistory.filter((v) => typeof v === "number");
+  if (values.length === 0) return;
+
+  const maxAbs = Math.max(1, ...values.map((v) => Math.abs(v)));
+  const stepX = chartW / Math.max(1, values.length - 1);
+
+  evalCtx.strokeStyle = "#1f6f63";
+  evalCtx.lineWidth = 2;
+  evalCtx.beginPath();
+  values.forEach((v, i) => {
+    const x = originX + i * stepX;
+    const y = originY + chartH / 2 - (v / maxAbs) * (chartH / 2);
+    if (i === 0) {
+      evalCtx.moveTo(x, y);
+    } else {
+      evalCtx.lineTo(x, y);
+    }
+  });
+  evalCtx.stroke();
+
+  // Dots on each move.
+  evalCtx.fillStyle = "#f08a24";
+  values.forEach((v, i) => {
+    const x = originX + i * stepX;
+    const y = originY + chartH / 2 - (v / maxAbs) * (chartH / 2);
+    evalCtx.beginPath();
+    evalCtx.arc(x, y, 2.5, 0, Math.PI * 2);
+    evalCtx.fill();
+  });
 }
 
 function drawBoard() {
@@ -97,20 +167,59 @@ function drawBoard() {
     ctx.fillText(String(i + 1), pad - labelOffset, y);
   }
 
+  const drawStone = (x, y, player, radius) => {
+    const gradient = ctx.createRadialGradient(
+      x - radius * 0.35,
+      y - radius * 0.35,
+      radius * 0.2,
+      x,
+      y,
+      radius
+    );
+    if (player === 1) {
+      gradient.addColorStop(0, "#4b4b4b");
+      gradient.addColorStop(0.5, "#1e1e1e");
+      gradient.addColorStop(1, "#050505");
+      ctx.strokeStyle = "#0f0f0f";
+    } else {
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(0.5, "#f1f1f1");
+      gradient.addColorStop(1, "#cfcfcf");
+      ctx.strokeStyle = "#a7a7a7";
+    }
+    ctx.save();
+    ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 3;
+    ctx.beginPath();
+    ctx.fillStyle = gradient;
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, radius - 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
   board.forEach((v, idx) => {
     if (v === 0) return;
-    const r = 12;
     const row = Math.floor(idx / size);
     const col = idx % size;
     const x = pad + col * cell;
     const y = pad + row * cell;
-    ctx.beginPath();
-    ctx.fillStyle = v === 1 ? "#1f1f1f" : "#f5f5f5";
-    ctx.strokeStyle = v === 1 ? "#111" : "#888";
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    drawStone(x, y, v, 12);
   });
+
+  if (hoverMove !== null && board[hoverMove] === 0 && resultState === "ongoing") {
+    const row = Math.floor(hoverMove / size);
+    const col = hoverMove % size;
+    const x = pad + col * cell;
+    const y = pad + row * cell;
+    const toPlay = board.filter((v) => v !== 0).length % 2 === 0 ? 1 : -1;
+    const hoverPlayer = analysisOnly ? toPlay : humanPlayer;
+    drawStone(x, y, hoverPlayer, 13);
+  }
 
   if (lastMove !== null) {
     const row = Math.floor(lastMove / size);
@@ -182,7 +291,7 @@ function drawBoard() {
 function renderPolicyList(probList, targetEl, limit) {
   if (!targetEl) return;
   if (!Array.isArray(probList) || probList.length !== board.length) {
-    targetEl.textContent = "N/A";
+    targetEl.textContent = "暂无";
     return;
   }
   const entries = probList
@@ -191,7 +300,7 @@ function renderPolicyList(probList, targetEl, limit) {
     .sort((a, b) => b.p - a.p);
   const slice = typeof limit === "number" ? entries.slice(0, limit) : entries;
   if (entries.length === 0) {
-    targetEl.textContent = "N/A";
+    targetEl.textContent = "暂无";
     return;
   }
   targetEl.innerHTML = "";
@@ -212,10 +321,11 @@ function renderPolicyList(probList, targetEl, limit) {
   });
 }
 
-function renderMctsList(mcts) {
+function renderMctsList(mcts, isEmptyBoard = false) {
   if (!mctsListEl) return;
+  mctsListEl.classList.toggle("mcts-placeholder", isEmptyBoard);
   if (!mcts || !Array.isArray(mcts.children) || mcts.children.length === 0) {
-    mctsListEl.textContent = "N/A";
+    mctsListEl.textContent = isEmptyBoard ? "" : "暂无";
     return;
   }
   const top = mcts.children.slice(0, 8);
@@ -242,25 +352,22 @@ function renderMctsList(mcts) {
 }
 
 function setEval(value) {
-  // Update advantage bar.
   if (value === null || value === undefined) {
-    evalText.textContent = "AZ eval: N/A";
-    evalFill.style.left = "50%";
-    evalFill.style.width = "0%";
+    evalText.textContent = "AZ 评估：暂无";
+    drawEvalChart();
     return;
   }
-  const youValue = -value;
-  const youText = humanPlayer === -1 ? ` | 你方: ${youValue.toFixed(2)}` : "";
-  evalText.textContent = `AZ eval (黑): ${value.toFixed(2)}${youText}`;
-  const clamped = Math.max(-1, Math.min(1, value));
-  const pct = Math.abs(clamped) * 50;
-  const left = clamped >= 0 ? 50 : 50 - pct;
-  evalFill.style.left = `${left}%`;
-  evalFill.style.width = `${pct}%`;
+  evalText.textContent = `AZ 评估（黑方视角）：${value.toFixed(2)}`;
+  drawEvalChart();
 }
 
 function setStatus(text) {
   statusText.textContent = text;
+}
+
+function setPending(isPending) {
+  if (!statusRow) return;
+  statusRow.classList.toggle("pending", isPending);
 }
 
 function detectAiMove(prevBoard, nextBoard, aiPlayer) {
@@ -272,18 +379,6 @@ function detectAiMove(prevBoard, nextBoard, aiPlayer) {
     }
   }
   return found;
-}
-
-function setAiMoveProb(probList, aiMoveIdx) {
-  if (!aiProbEl) return;
-  if (!Array.isArray(probList) || aiMoveIdx === null || aiMoveIdx === undefined) {
-    aiProbEl.textContent = "AI move prob: N/A";
-    return;
-  }
-  const p = probList[aiMoveIdx] || 0;
-  const row = Math.floor(aiMoveIdx / size) + 1;
-  const col = (aiMoveIdx % size) + 1;
-  aiProbEl.textContent = `AI move prob: ${(p * 100).toFixed(2)}% @ (${row}, ${col})`;
 }
 
 function getHumanSide() {
@@ -308,15 +403,63 @@ function updateHumanPlayer(side) {
   humanPlayer = side === "x" ? 1 : -1;
 }
 
+function syncEvalHistory(history, currentEval) {
+  if (Array.isArray(history)) {
+    evalHistory = history.slice();
+  } else if (currentEval !== null && currentEval !== undefined) {
+    evalHistory = evalHistory.concat([currentEval]);
+  }
+  drawEvalChart();
+}
+
+function getBestPolicyMove(probList) {
+  if (!Array.isArray(probList) || probList.length === 0) return null;
+  let bestIdx = null;
+  let best = -1;
+  probList.forEach((p, idx) => {
+    if (p > best) {
+      best = p;
+      bestIdx = idx;
+    }
+  });
+  return bestIdx;
+}
+
+function updateStatusForMode(result, nextPlayer) {
+  if (!result || result.state === "ongoing") {
+    if (analysisOnly) {
+      const side = nextPlayer === 1 ? "黑方（X）" : "白方（O）";
+      setStatus(`${side}落子。`);
+    } else {
+      setStatus("轮到你了。");
+    }
+    return;
+  }
+  if (result.state === "draw") {
+    setStatus("平局。");
+    return;
+  }
+  if (analysisOnly) {
+    const winner = result.winner === 1 ? "黑方（X）" : "白方（O）";
+    setStatus(`${winner}胜。`);
+  } else if (result.winner === humanPlayer) {
+    setStatus("你赢了！");
+  } else {
+    setStatus("AI 获胜。");
+  }
+}
+
 function showResultModal(result) {
   if (!result || result.state === "ongoing") return;
-  resultTitle.textContent = "Game Over";
+  resultTitle.textContent = "对局结束";
   if (result.state === "draw") {
-    resultBody.textContent = "Draw game.";
+    resultBody.textContent = "平局。";
+  } else if (analysisOnly) {
+    resultBody.textContent = result.winner === 1 ? "黑方胜。" : "白方胜。";
   } else if (result.winner === humanPlayer) {
-    resultBody.textContent = "You win!";
+    resultBody.textContent = "你赢了！";
   } else {
-    resultBody.textContent = "AI wins.";
+    resultBody.textContent = "AI 获胜。";
   }
   resultModal.classList.remove("hidden");
 }
@@ -327,7 +470,7 @@ function hideResultModal() {
 
 async function newGame() {
   // Create a new server-side game.
-  setStatus("Creating game...");
+  setStatus("正在创建对局...");
   const sims = parseInt(simsInput.value, 10) || 800;
   lastBoard = board.slice();
   const res = await fetch("/api/new", {
@@ -338,6 +481,7 @@ async function newGame() {
       device: deviceInput.value.trim() || "cpu",
       az_model: azModelInput.value.trim(),
       human: getHumanSide(),
+      analysis_only: analysisOnlyInput?.value === "1",
     }),
   });
   const data = await res.json();
@@ -345,14 +489,18 @@ async function newGame() {
   board = data.board;
   resultState = data.result.state;
   updateHumanPlayer(getHumanSide());
-  lastAiMove = detectAiMove(lastBoard, board, -humanPlayer);
+  analysisOnly = !!data.analysis_only;
+  if (analysisOnlyInput) analysisOnlyInput.value = analysisOnly ? "1" : "0";
+  lastAiMove = analysisOnly
+    ? getBestPolicyMove(data.policy)
+    : detectAiMove(lastBoard, board, -humanPlayer);
   lastMove = null;
   setPolicy(data.policy);
-  setAiMoveProb(data.policy, lastAiMove);
+  syncEvalHistory(data.eval_history, data.eval);
   setEval(data.eval);
   lastMcts = data.mcts || null;
-  renderMctsList(lastMcts);
-  setStatus(resultState === "ongoing" ? "Your move." : "Game over.");
+  renderMctsList(lastMcts, board.every((v) => v === 0));
+  updateStatusForMode(data.result, data.next_player);
   hideResultModal();
   showResultModal(data.result);
   if (data.config) {
@@ -366,31 +514,77 @@ async function playMove(idx) {
   // Send human move to the backend and render response.
   if (!gameId || resultState !== "ongoing") return;
   if (board[idx] !== 0) return;
+  if (pendingMove) return;
+  pendingMove = true;
+  setPending(true);
   lastBoard = board.slice();
+  board[idx] = analysisOnly
+    ? (board.filter((v) => v !== 0).length % 2 === 0 ? 1 : -1)
+    : humanPlayer;
+  lastMove = idx;
+  hoverMove = null;
+  drawBoard();
+  setStatus("思考中...");
   const res = await fetch("/api/move", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ game_id: gameId, action: idx }),
   });
-  if (!res.ok) return;
+  if (!res.ok) {
+    board = lastBoard.slice();
+    pendingMove = false;
+    setPending(false);
+    drawBoard();
+    return;
+  }
   const data = await res.json();
   board = data.board;
   resultState = data.result.state;
   lastMove = idx;
-  lastAiMove = detectAiMove(lastBoard, board, -humanPlayer);
+  analysisOnly = !!data.analysis_only;
+  if (analysisOnlyInput) analysisOnlyInput.value = analysisOnly ? "1" : "0";
+  lastAiMove = analysisOnly
+    ? getBestPolicyMove(data.policy)
+    : detectAiMove(lastBoard, board, -humanPlayer);
   setPolicy(data.policy);
-  setAiMoveProb(data.policy, lastAiMove);
+  syncEvalHistory(data.eval_history, data.eval);
   setEval(data.eval);
   lastMcts = data.mcts || null;
-  renderMctsList(lastMcts);
+  renderMctsList(lastMcts, board.every((v) => v === 0));
+  updateStatusForMode(data.result, data.next_player);
+  showResultModal(data.result);
+  drawBoard();
+  lastBoard = board.slice();
+  pendingMove = false;
+  setPending(false);
+}
+
+async function undoMove() {
+  if (!gameId) return;
+  const steps = analysisOnly ? 1 : 2;
+  const res = await fetch("/api/undo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ game_id: gameId, steps }),
+  });
+  if (!res.ok) return;
+  const data = await res.json();
+  board = data.board;
+  resultState = data.result.state;
+  lastMove = null;
+  hoverMove = null;
+  analysisOnly = !!data.analysis_only;
+  if (analysisOnlyInput) analysisOnlyInput.checked = analysisOnly;
+  lastAiMove = analysisOnly ? getBestPolicyMove(data.policy) : null;
+  setPolicy(data.policy);
+  setAiMoveProb(data.policy, lastAiMove);
+  syncEvalHistory(data.eval_history, data.eval);
+  setEval(data.eval);
+  lastMcts = data.mcts || null;
+  renderMctsList(lastMcts, board.every((v) => v === 0));
+  updateStatusForMode(data.result, data.next_player);
   if (resultState === "ongoing") {
-    setStatus("Your move.");
-  } else if (data.result.state === "draw") {
-    setStatus("Draw.");
-  } else if (data.result.winner === humanPlayer) {
-    setStatus("You win!");
-  } else {
-    setStatus("AI wins.");
+    hideResultModal();
   }
   showResultModal(data.result);
   drawBoard();
@@ -420,6 +614,49 @@ canvas.addEventListener("click", (event) => {
   if (row < 0 || row >= size || col < 0 || col >= size) return;
   const idx = row * size + col;
   playMove(idx);
+});
+
+canvas.addEventListener("mousemove", (event) => {
+  if (resultState !== "ongoing") {
+    if (hoverMove !== null) {
+      hoverMove = null;
+      drawBoard();
+    }
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (event.clientX - rect.left) * scaleX;
+  const y = (event.clientY - rect.top) * scaleY;
+  const col = Math.round((x - pad) / cell);
+  const row = Math.round((y - pad) / cell);
+  if (row < 0 || row >= size || col < 0 || col >= size) {
+    if (hoverMove !== null) {
+      hoverMove = null;
+      drawBoard();
+    }
+    return;
+  }
+  const idx = row * size + col;
+  if (board[idx] !== 0) {
+    if (hoverMove !== null) {
+      hoverMove = null;
+      drawBoard();
+    }
+    return;
+  }
+  if (hoverMove !== idx) {
+    hoverMove = idx;
+    drawBoard();
+  }
+});
+
+canvas.addEventListener("mouseleave", () => {
+  if (hoverMove !== null) {
+    hoverMove = null;
+    drawBoard();
+  }
 });
 
 async function loadConfig() {
@@ -454,18 +691,18 @@ function syncConfigUi(data) {
   if (data.sims) simsInput.value = data.sims;
   if (data.device) {
     deviceInput.value = data.device;
-    deviceInfo.textContent = `Server: ${data.device}`;
+    deviceInfo.textContent = `服务端：${data.device}`;
   }
   if (data.az_model) azModelInput.value = data.az_model;
   if (typeof data.model_loaded === "boolean") {
-    modelInfo.textContent = data.model_loaded ? "Model: loaded" : "Model: not loaded";
+    modelInfo.textContent = data.model_loaded ? "模型：已加载" : "模型：未加载";
   }
   if (data.model_file && data.model_file.created) {
     const created = data.model_file.created;
-    const modified = data.model_file.modified ? `, modified ${data.model_file.modified}` : "";
-    modelTime.textContent = `Model file created ${created}${modified}`;
+    const modifiedText = data.model_file.modified ? `，修改于 ${data.model_file.modified}` : "";
+    modelTime.textContent = `模型创建于 ${created}${modifiedText}`;
   } else {
-    modelTime.textContent = "Model file: N/A";
+    modelTime.textContent = "模型文件：暂无";
   }
 }
 
@@ -477,7 +714,10 @@ newFromModal.addEventListener("click", () => {
   hideResultModal();
   newGame();
 });
+undoMoveBtn?.addEventListener("click", undoMove);
 window.addEventListener("resize", resizeBoard);
+window.addEventListener("resize", resizeEvalChart);
 
 resizeBoard();
+resizeEvalChart();
 loadConfig();

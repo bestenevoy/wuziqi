@@ -15,7 +15,7 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", sans-serif;
+  /* font-family: "Space Grotesk", sans-serif; */
   color: var(--ink);
   background: radial-gradient(circle at 10% 10%, #f9f4ec, var(--bg));
 }
@@ -33,24 +33,9 @@ body {
   padding: 24px 24px 32px;
 }
 
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 8px;
-  font-family: "IBM Plex Mono", monospace;
-}
-
 h1 {
   font-size: clamp(28px, 3vw, 44px);
   margin: 0 0 12px;
-}
-
-.sub {
-  max-width: 480px;
-  font-size: 16px;
-  color: var(--muted);
 }
 
 .panel {
@@ -85,7 +70,7 @@ label {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "SimSun", monospace;
 }
 
 select,
@@ -140,11 +125,10 @@ input {
 .meta {
   font-size: 12px;
   color: var(--muted);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "SimSun", monospace;
 }
 
 .cta {
-  margin-top: 6px;
   background: var(--accent-2);
   border: none;
   color: #fff;
@@ -164,37 +148,41 @@ input {
   color: var(--muted);
 }
 
+.status.pending {
+  color: #8a4b12;
+}
+
 .eval {
   margin-top: 8px;
   display: grid;
   gap: 6px;
 }
 
-.eval-bar {
-  position: relative;
-  height: 10px;
-  background: #f2e6d5;
-  border-radius: 999px;
-  overflow: hidden;
+.eval-chart {
+  background: #f6ead8;
+  border: 1px solid #e2d1bb;
+  border-radius: 12px;
+  padding: 8px;
 }
 
-.eval-bar::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: #bda98e;
+#evalChart {
+  width: 100%;
+  height: 110px;
+  display: block;
 }
 
-.eval-fill {
-  position: absolute;
-  left: 50%;
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #c0382b, #e9a13b, #2f9b44);
-  transition: left 0.2s ease, width 0.2s ease;
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  font-family: "SimSun", monospace;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
 }
 
 .board-wrap {
@@ -260,9 +248,32 @@ input {
   padding: 10px 12px;
 }
 
-.row-inline.triple-buttons {
-  grid-template-columns: minmax(160px, 0.8fr) 1.2fr;
-  align-items: stretch;
+.cta-compact {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 8px 6px;
+  font-size: 12px;
+}
+
+.mode-row {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.mode-row select {
+  width: 100%;
 }
 
 .pill-group.inline {
@@ -282,7 +293,7 @@ input {
 .hint {
   font-size: 13px;
   color: var(--muted);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "SimSun", monospace;
 }
 
 .policy-box {
@@ -299,19 +310,19 @@ input {
 }
 
 .policy-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--muted);
   margin-bottom: 8px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "SimSun", monospace;
 }
 
 .policy-list {
   display: grid;
   gap: 6px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 13px;
+  font-family: "Kaiti", monospace;
+  font-size: 16px;
   color: var(--ink);
 }
 
@@ -321,6 +332,12 @@ input {
 
 .mcts-list .policy-item {
   grid-template-columns: 1fr auto;
+}
+
+.mcts-placeholder {
+  min-height: 160px;
+  border-radius: 10px;
+  background: rgba(244, 239, 230, 0.45);
 }
 
 .policy-all {

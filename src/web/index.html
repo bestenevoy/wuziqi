@@ -1,9 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Gomoku RL Web</title>
+    <title>五子棋 RL Web</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,83 +18,82 @@
         <section class="board-area compact">
           <div class="board-top compact">
             <div class="title-block">
-              <p class="eyebrow">Gomoku RL</p>
-              <h1>AlphaZero-Style Arena</h1>
-              <p class="sub">Play fast. See search unfold.</p>
+              <h1>五子棋 & AlphaZero</h1>
             </div>
             <div class="board-controls compact">
-              <div class="row">
-                <label>Start game / Play as</label>
-                <div class="row-inline triple-buttons">
-                  <button id="newGame" class="cta">New game</button>
-                  <div class="pill-group inline" id="humanSide">
-                    <button data-side="x" class="pill active">Play Black (First)</button>
-                    <button data-side="o" class="pill">Play White (Second)</button>
-                  </div>
-                </div>
-                <div class="meta">AI plays the other side.</div>
-              </div>
               <div class="row status">
-                <label>Current analysis</label>
-                <div id="statusText">Click New game to start.</div>
-                <div class="eval">
-                  <span id="evalText">AZ eval: N/A</span>
-                  <div class="eval-bar">
-                    <div class="eval-fill" id="evalFill"></div>
-                  </div>
-                </div>
-                <div class="meta" id="aiProb">AI move prob: N/A</div>
+                <label>当前局势</label>
+                <div id="statusText">点击“新对局”开始。</div>
+                <div class="meta" id="aiProb">AI 落子概率：暂无</div>
               </div>
             </div>
           </div>
           <canvas id="board" width="560" height="560"></canvas>
           <div class="hint">
-            Click a grid intersection to place a stone. Orange glows and labels show
-            the AI's move probabilities; the last move is outlined.
+            点击交叉点落子。橙色光晕与数字显示 AI 的落子概率；上一手会被高亮。
           </div>
           <div class="panel compact config-panel">
             <div class="row">
-              <label>Search sims</label>
+              <label>搜索次数</label>
               <input id="sims" type="number" min="50" max="5000" value="800" />
             </div>
             <div class="row">
-              <label>Device</label>
+              <label>设备</label>
               <div class="row-inline">
                 <input id="deviceInput" type="text" value="cpu" />
-                <button id="applyConfig" class="mini">Apply</button>
+                <button id="applyConfig" class="mini">应用</button>
               </div>
-              <div class="meta" id="deviceInfo">Server: cpu</div>
+              <div class="meta" id="deviceInfo">服务端：cpu</div>
             </div>
             <div class="row">
-              <label>AZ model path</label>
+              <label>AZ 模型路径</label>
               <div class="row-inline">
                 <input id="azModel" type="text" value="artifacts/az_model.pt" />
-                <button id="reloadModel" class="mini">Reload</button>
+                <button id="reloadModel" class="mini">重载</button>
               </div>
-              <div class="meta" id="modelInfo">Model: not loaded</div>
-              <div class="meta" id="modelTime">Model file: N/A</div>
+              <div class="meta" id="modelInfo">模型：未加载</div>
+              <div class="meta" id="modelTime">模型文件：暂无</div>
             </div>
           </div>
         </section>
         <aside class="policy-box compact analysis-panel">
-          <div class="policy-title">落子分析</div>
-          <div id="policyList" class="policy-list">N/A</div>
-          <div class="policy-title">MCTS breakdown</div>
+          <div class="policy-title">MCTS 分解</div>
           <div class="meta mcts-note">
-            pi = visits / total; PUCT = Q + U, U = c_puct * P * sqrt(N) / (1 + n)
+            pi = visits / total；PUCT = Q + U，U = c_puct * P * sqrt(N) / (1 + n)
           </div>
-          <div id="mctsList" class="policy-list mcts-list">N/A</div>
+          <div id="mctsList" class="policy-list mcts-list mcts-placeholder"></div>
+          <div class="policy-title">局势走势图</div>
+          <div class="eval">
+            <span id="evalText">AZ 评估：暂无</span>
+            <div class="eval-chart">
+              <canvas id="evalChart" width="320" height="120"></canvas>
+            </div>
+          </div>
+          <div class="action-row" id="humanSide">
+            <button id="newGame" class="cta action-btn">新对局</button>
+            <button data-side="x" class="pill action-btn active">执黑（先手）</button>
+            <button data-side="o" class="pill action-btn">执白（后手）</button>
+            <button id="undoMove" class="mini action-btn">悔棋</button>
+          </div>
+          <div class="mode-row">
+            <label for="analysisOnly">模式</label>
+            <select id="analysisOnly">
+              <option value="0">人机对战</option>
+              <option value="1">人人对局（仅分析）</option>
+            </select>
+            <div class="meta">AI 只给出建议落子，不自动下子。</div>
+          </div>
         </aside>
       </main>
     </div>
 
     <div id="resultModal" class="modal hidden">
       <div class="modal-card">
-        <div class="modal-title" id="resultTitle">Game Over</div>
+        <div class="modal-title" id="resultTitle">对局结束</div>
         <div class="modal-body" id="resultBody"></div>
         <div class="modal-actions">
-          <button id="closeModal" class="mini">Close</button>
-          <button id="newFromModal" class="cta">New game</button>
+          <button id="closeModal" class="mini">关闭</button>
+          <button id="newFromModal" class="cta">新对局</button>
         </div>
       </div>
     </div>

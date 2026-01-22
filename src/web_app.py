@@ -32,6 +32,7 @@ class GameState:
         human_player: int,
         sims: int,
         az_model: Optional[AZNet],
+        analysis_only: bool = False,
     ) -> None:
         self.game_id = game_id
         self.env = Gomoku()
@@ -39,6 +40,10 @@ class GameState:
         self.ai_player = -human_player
         self.sims = sims
         self.az_model = az_model
+        self.analysis_only = analysis_only
+        self.history: list[tuple[int, int]] = []
+        self.eval_history: list[float] = []
+        self.last_eval: Optional[float] = None
         
         # 修正：初始化 MCTS 时不传 eval_batch_size
         if az_model:
@@ -55,6 +60,55 @@ class GameState:
         self.env.reset()
         if self.az_mcts:
             self.az_mcts.root = None # 重置搜索树
+        self.history = []
+        self.eval_history = []
+        self.last_eval = None
+
+    def apply_move(
+        self,
+        action: int,
+        player: int,
+        track_history: bool = True,
+        advance_mcts: bool = True,
+    ) -> None:
+        self.env.step(action, player)
+        if track_history:
+            self.history.append((action, player))
+        if advance_mcts and self.az_mcts is not None:
+            self.az_mcts.advance(action, self.env)
+        self.record_eval()
+
+    def undo(self, steps: int) -> bool:
+        if steps <= 0 or steps > len(self.history):
+            return False
+        del self.history[-steps:]
+        self.env.reset()
+        if self.az_mcts is not None:
+            self.az_mcts.root = None
+        self.eval_history = []
+        self.last_eval = None
+        for action, player in self.history:
+            self.env.step(action, player)
+            self.record_eval()
+        return True
+
+    def record_eval(self) -> Optional[float]:
+        if self.az_model is None:
+            self.last_eval = None
+            return None
+        to_play = 1 if (self.env.move_count % 2 == 0) else -1
+        board_t = encode_board(
+            self.env.board,
+            to_play,
+            device=next(self.az_model.parameters()).device,
+        )
+        with torch.no_grad():
+            _, value = self.az_model(board_t.unsqueeze(0))
+        v_to_play = float(value.item())
+        v_x = v_to_play if to_play == 1 else -v_to_play
+        self.last_eval = v_x
+        self.eval_history.append(v_x)
+        return v_x
 
 
 def load_az_model(path: str, device: str) -> Optional[AZNet]:
@@ -86,9 +140,7 @@ def encode_result(result: Optional[int]) -> Dict:
 
 def append_move(game: GameState, action: int, player: int) -> None:
     # Apply move and update tree state.
-    game.env.step(action, player)
-    if game.az_mcts is not None:
-        game.az_mcts.advance(action, game.env)
+    game.apply_move(action, player, track_history=True, advance_mcts=True)
 
 
 def ai_choose_action(game: GameState) -> tuple[int, Optional[list[float]], Optional[dict]]:
@@ -101,27 +153,30 @@ def ai_choose_action(game: GameState) -> tuple[int, Optional[list[float]], Optio
     if game.az_mcts is not None:
         pi = game.az_mcts.run(game.env, player=game.ai_player, add_noise=False)
         mcts_stats = game.az_mcts.last_root_stats
-        return game.az_mcts.select_action(pi, temp=0.0), pi, mcts_stats
+        action = game.az_mcts.select_action(pi, temp=0.0)
+        r, c = divmod(action, game.env.size)
+        if game.env.board[r, c] != 0:
+            action = random.choice(available)
+        return action, pi, mcts_stats
     return random.choice(available), pi, mcts_stats
 
 
 def evaluate_board(game: GameState) -> Optional[float]:
-    # Use AZ value head for the advantage bar (X perspective).
-    if game.az_model is None:
+    # Use AZ value head for the advantage chart (X perspective).
+    if game.last_eval is not None:
+        return game.last_eval
+    if game.env.move_count == 0:
         return None
-    import torch
+    return game.record_eval()
 
+
+def analyze_position(game: GameState) -> tuple[Optional[list[float]], Optional[dict]]:
+    # Return policy and MCTS stats for the side to move without placing a stone.
+    if game.az_mcts is None:
+        return None, None
     to_play = 1 if (game.env.move_count % 2 == 0) else -1
-    board_t = encode_board(
-        game.env.board,
-        to_play,
-        device=next(game.az_model.parameters()).device,
-    )
-    with torch.no_grad():
-        _, value = game.az_model(board_t.unsqueeze(0))
-    v_to_play = float(value.item())
-    v_x = v_to_play if to_play == 1 else -v_to_play
-    return v_x
+    pi = game.az_mcts.run(game.env, player=to_play, add_noise=False)
+    return pi, game.az_mcts.last_root_stats
 
 
 def main() -> None:
@@ -159,6 +214,7 @@ def main() -> None:
         sims = int(data.get("sims", config["sims"]))
         device = data.get("device")
         az_path = data.get("az_model")
+        analysis_only = bool(data.get("analysis_only", False))
         if sims > 0:
             config["sims"] = sims
         if isinstance(device, str) and device:
@@ -176,26 +232,29 @@ def main() -> None:
             human_player=human_player,
             sims=sims,
             az_model=az_model,
+            analysis_only=analysis_only,
         )
         games[game_id] = game
 
-        if human_player == -1:
+        if not analysis_only and human_player == -1:
             action, pi, mcts_stats = ai_choose_action(game)
             append_move(game, action, game.ai_player)
         else:
-            pi = None
-            mcts_stats = None
+            pi, mcts_stats = analyze_position(game) if analysis_only else (None, None)
 
         result = game.env.check_winner()
+        next_player = 1 if (game.env.move_count % 2 == 0) else -1
         return jsonify(
             {
                 "game_id": game_id,
                 "board": game.env.board.astype(int).ravel().tolist(),
                 "result": encode_result(result),
-                "next_player": 1,
+                "next_player": next_player,
                 "eval": evaluate_board(game),
+                "eval_history": game.eval_history,
                 "policy": pi,
                 "mcts": mcts_stats,
+                "analysis_only": analysis_only,
                 "config": {
                     "sims": config["sims"],
                     "device": config["device"],
@@ -266,24 +325,73 @@ def main() -> None:
         if game.env.board[r, c] != 0:
             return jsonify({"error": "invalid"}), 400
 
-        append_move(game, action, game.human_player)
+        if game.analysis_only:
+            to_play = 1 if (game.env.move_count % 2 == 0) else -1
+            append_move(game, action, to_play)
+        else:
+            append_move(game, action, game.human_player)
         result = game.env.check_winner()
         policy = None
         mcts_stats = None
-        if result is None:
+        if result is None and not game.analysis_only:
             ai_action, policy, mcts_stats = ai_choose_action(game)
             append_move(game, ai_action, game.ai_player)
             result = game.env.check_winner()
+        elif result is None and game.analysis_only:
+            policy, mcts_stats = analyze_position(game)
 
+        next_player = 1 if (game.env.move_count % 2 == 0) else -1
         return jsonify(
             {
                 "game_id": game_id,
                 "board": game.env.board.astype(int).ravel().tolist(),
                 "result": encode_result(result),
-                "next_player": game.human_player,
+                "next_player": next_player if game.analysis_only else game.human_player,
                 "eval": evaluate_board(game),
+                "eval_history": game.eval_history,
                 "policy": policy,
                 "mcts": mcts_stats,
+                "analysis_only": game.analysis_only,
+            }
+        )
+
+    @app.route("/api/undo", methods=["POST"])
+    def api_undo():
+        data = request.get_json(silent=True) or {}
+        game_id = data.get("game_id")
+        steps = data.get("steps", 1)
+        if game_id not in games:
+            return jsonify({"error": "invalid"}), 400
+        try:
+            steps = int(steps)
+        except ValueError:
+            return jsonify({"error": "invalid"}), 400
+        game = games[game_id]
+        if steps > len(game.history):
+            steps = len(game.history)
+        if steps == 0:
+            return jsonify({"error": "invalid"}), 400
+        if not game.undo(steps):
+            return jsonify({"error": "invalid"}), 400
+
+        result = game.env.check_winner()
+        policy = None
+        mcts_stats = None
+        if result is None and game.analysis_only:
+            policy, mcts_stats = analyze_position(game)
+
+        next_player = 1 if (game.env.move_count % 2 == 0) else -1
+        return jsonify(
+            {
+                "game_id": game_id,
+                "board": game.env.board.astype(int).ravel().tolist(),
+                "result": encode_result(result),
+                "next_player": next_player if game.analysis_only else game.human_player,
+                "eval": evaluate_board(game),
+                "eval_history": game.eval_history,
+                "policy": policy,
+                "mcts": mcts_stats,
+                "analysis_only": game.analysis_only,
             }
         )
 

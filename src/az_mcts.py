@@ -101,9 +101,17 @@ class AZMCTS:
         
         total_visits = sum(visits)
         if total_visits == 0:
-            # 异常兜底：如果没有访问过任何节点（极少见），返回均匀分布
+            # 异常兜底：如果没有访问过任何节点（极少见），仅在合法动作上做均匀分布
+            actions = list(self.root.children.keys()) if self.root else []
+            if not actions:
+                actions = self._available_actions(env)
+            pi = [0.0] * BOARD_AREA
+            if actions:
+                uniform = 1.0 / len(actions)
+                for action in actions:
+                    pi[action] = uniform
             self.last_root_stats = {"total_visits": 0, "children": []}
-            return [1.0 / BOARD_AREA] * BOARD_AREA
+            return pi
 
         self.last_root_stats = self._collect_root_stats(total_visits)
         return [v / total_visits for v in visits]
