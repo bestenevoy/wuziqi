@@ -46,9 +46,9 @@
               <div class="meta" id="deviceInfo">服务端：cpu</div>
             </div>
             <div class="row">
-              <label>AZ 模型路径</label>
+              <label>AZ 模型</label>
               <div class="row-inline">
-                <input id="azModel" type="text" value="artifacts/az_model.pt" />
+                <select id="azModelSelect"></select>
                 <button id="reloadModel" class="mini">重载</button>
               </div>
               <div class="meta" id="modelInfo">模型：未加载</div>
@@ -94,6 +94,16 @@
         <div class="modal-actions">
           <button id="closeModal" class="mini">关闭</button>
           <button id="newFromModal" class="cta">新对局</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="noticeModal" class="modal hidden" hidden>
+      <div class="modal-card">
+        <div class="modal-title">提示</div>
+        <div class="modal-body" id="noticeBody">配置已更新，将在新对局生效。</div>
+        <div class="modal-actions single">
+          <button id="closeNotice" class="cta">知道了</button>
         </div>
       </div>
     </div>

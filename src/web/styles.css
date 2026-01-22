@@ -404,6 +404,10 @@ input {
   gap: 10px;
 }
 
+.modal-actions.single {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 900px) {
   .board-wrap {
     grid-template-columns: 1fr;

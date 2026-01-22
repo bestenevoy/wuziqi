@@ -11,7 +11,7 @@ const humanSide = document.getElementById("humanSide");
 const analysisOnlyInput = document.getElementById("analysisOnly");
 const deviceInput = document.getElementById("deviceInput");
 const deviceInfo = document.getElementById("deviceInfo");
-const azModelInput = document.getElementById("azModel");
+const azModelSelect = document.getElementById("azModelSelect");
 const applyConfigBtn = document.getElementById("applyConfig");
 const modelInfo = document.getElementById("modelInfo");
 const modelTime = document.getElementById("modelTime");
@@ -48,6 +48,9 @@ const resultTitle = document.getElementById("resultTitle");
 const resultBody = document.getElementById("resultBody");
 const closeModal = document.getElementById("closeModal");
 const newFromModal = document.getElementById("newFromModal");
+const noticeModal = document.getElementById("noticeModal");
+const noticeBody = document.getElementById("noticeBody");
+const closeNotice = document.getElementById("closeNotice");
 const evalCtx = evalChart ? evalChart.getContext("2d") : null;
 
 function resizeBoard() {
@@ -340,9 +343,7 @@ function renderMctsList(mcts, isEmptyBoard = false) {
     coord.textContent = `(${row}, ${col})`;
     const detail = document.createElement("span");
     detail.className = "prob";
-    detail.textContent = `v:${c.visits} p:${c.prior.toFixed(2)} q:${c.q.toFixed(
-      2
-    )} u:${c.u.toFixed(2)} s:${c.score.toFixed(2)} pi:${(
+    detail.textContent = `v:${c.visits} p:${c.prior.toFixed(2)} q:${c.q.toFixed(2)} u:${c.u.toFixed(2)} s:${c.score.toFixed(2)} pi:${(
       c.pi * 100
     ).toFixed(1)}%`;
     item.appendChild(coord);
@@ -368,6 +369,34 @@ function setStatus(text) {
 function setPending(isPending) {
   if (!statusRow) return;
   statusRow.classList.toggle("pending", isPending);
+}
+
+function updateModelOptions(models, selectedPath) {
+  if (!azModelSelect) return;
+  const current = selectedPath || azModelSelect.value || "";
+  const list = Array.isArray(models) ? models : [];
+  const seen = new Set();
+  azModelSelect.innerHTML = "";
+  list.forEach((item) => {
+    if (!item || !item.path || seen.has(item.path)) return;
+    seen.add(item.path);
+    const opt = document.createElement("option");
+    opt.value = item.path;
+    opt.textContent = item.exists === false ? `${item.path} (missing)` : item.path;
+    azModelSelect.appendChild(opt);
+  });
+  if (current && !seen.has(current)) {
+    const opt = document.createElement("option");
+    opt.value = current;
+    opt.textContent = current;
+    azModelSelect.appendChild(opt);
+  }
+  if (current) {
+    azModelSelect.value = current;
+  }
+  if (azModelSelect.value !== current && azModelSelect.options.length > 0) {
+    azModelSelect.selectedIndex = 0;
+  }
 }
 
 function detectAiMove(prevBoard, nextBoard, aiPlayer) {
@@ -468,6 +497,19 @@ function hideResultModal() {
   resultModal.classList.add("hidden");
 }
 
+function showNotice(text) {
+  if (!noticeModal) return;
+  if (noticeBody && text) noticeBody.textContent = text;
+  noticeModal.removeAttribute("hidden");
+  noticeModal.classList.remove("hidden");
+}
+
+function hideNotice() {
+  if (!noticeModal) return;
+  noticeModal.setAttribute("hidden", "hidden");
+  noticeModal.classList.add("hidden");
+}
+
 async function newGame() {
   // Create a new server-side game.
   setStatus("正在创建对局...");
@@ -479,7 +521,7 @@ async function newGame() {
     body: JSON.stringify({
       sims,
       device: deviceInput.value.trim() || "cpu",
-      az_model: azModelInput.value.trim(),
+      az_model: azModelSelect?.value || "",
       human: getHumanSide(),
       analysis_only: analysisOnlyInput?.value === "1",
     }),
@@ -671,7 +713,7 @@ async function applyConfig() {
   const payload = {
     sims,
     device: deviceInput.value.trim() || "cpu",
-    az_model: azModelInput.value.trim(),
+    az_model: azModelSelect?.value || "",
   };
   const res = await fetch("/api/config", {
     method: "POST",
@@ -681,6 +723,7 @@ async function applyConfig() {
   if (!res.ok) return;
   const data = await res.json();
   syncConfigUi(data);
+  showNotice("配置已更新，将在新对局生效。");
 }
 
 async function reloadModel() {
@@ -693,7 +736,7 @@ function syncConfigUi(data) {
     deviceInput.value = data.device;
     deviceInfo.textContent = `服务端：${data.device}`;
   }
-  if (data.az_model) azModelInput.value = data.az_model;
+  updateModelOptions(data.models, data.az_model);
   if (typeof data.model_loaded === "boolean") {
     modelInfo.textContent = data.model_loaded ? "模型：已加载" : "模型：未加载";
   }
@@ -710,6 +753,10 @@ newGameBtn.addEventListener("click", newGame);
 applyConfigBtn.addEventListener("click", applyConfig);
 reloadModelBtn.addEventListener("click", reloadModel);
 closeModal.addEventListener("click", hideResultModal);
+closeNotice?.addEventListener("click", hideNotice);
+noticeModal?.addEventListener("click", (event) => {
+  if (event.target === noticeModal) hideNotice();
+});
 newFromModal.addEventListener("click", () => {
   hideResultModal();
   newGame();
@@ -720,4 +767,5 @@ window.addEventListener("resize", resizeEvalChart);
 
 resizeBoard();
 resizeEvalChart();
+hideNotice();
 loadConfig();

@@ -5,6 +5,7 @@ import os
 import random
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -127,6 +128,64 @@ def get_model_file_info(path: str) -> Optional[Dict[str, str]]:
     created = datetime.fromtimestamp(os.path.getctime(path)).isoformat(timespec="seconds")
     modified = datetime.fromtimestamp(os.path.getmtime(path)).isoformat(timespec="seconds")
     return {"created": created, "modified": modified}
+
+
+MODEL_EXTS = {".pt", ".pth"}
+
+
+def normalize_model_path(path: str) -> str:
+    if not path:
+        return ""
+    p = Path(path)
+    if p.is_absolute():
+        return p.as_posix()
+    return p.as_posix()
+
+
+def list_available_models(artifacts_dir: str, extra_paths: Optional[list[str]] = None) -> list[Dict]:
+    models: list[Dict] = []
+    seen: set[str] = set()
+    base = Path(artifacts_dir)
+    cwd = Path.cwd()
+    if base.exists() and base.is_dir():
+        for root, _, files in os.walk(base):
+            for name in files:
+                if Path(name).suffix.lower() not in MODEL_EXTS:
+                    continue
+                full_path = Path(root) / name
+                try:
+                    rel_path = full_path.relative_to(cwd)
+                    path_str = rel_path.as_posix()
+                except ValueError:
+                    path_str = full_path.as_posix()
+                if path_str in seen:
+                    continue
+                seen.add(path_str)
+                models.append(
+                    {
+                        "path": path_str,
+                        "exists": True,
+                        "file": get_model_file_info(str(full_path)),
+                    }
+                )
+    if extra_paths:
+        for path in extra_paths:
+            if not path:
+                continue
+            norm_path = normalize_model_path(path)
+            if norm_path in seen:
+                continue
+            exists = os.path.exists(path)
+            models.append(
+                {
+                    "path": norm_path,
+                    "exists": bool(exists),
+                    "file": get_model_file_info(path) if exists else None,
+                }
+            )
+            seen.add(norm_path)
+    models.sort(key=lambda item: item["path"])
+    return models
 
 
 def encode_result(result: Optional[int]) -> Dict:
@@ -261,6 +320,7 @@ def main() -> None:
                     "az_model": config["az_model"],
                     "model_loaded": az_model is not None,
                     "model_file": get_model_file_info(config["az_model"]),
+                    "models": list_available_models("artifacts", [config["az_model"]]),
                 },
             }
         )
@@ -275,6 +335,7 @@ def main() -> None:
                 "az_model": config["az_model"],
                 "model_loaded": az_model is not None,
                 "model_file": get_model_file_info(config["az_model"]),
+                "models": list_available_models("artifacts", [config["az_model"]]),
             }
         )
 
@@ -302,6 +363,7 @@ def main() -> None:
                 "az_model": config["az_model"],
                 "model_loaded": az_model is not None,
                 "model_file": get_model_file_info(config["az_model"]),
+                "models": list_available_models("artifacts", [config["az_model"]]),
             }
         )
 
