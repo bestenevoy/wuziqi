@@ -1,0 +1,26 @@
+source .venv/bin/activate
+python src/az_train.py \
+  --async-selfplay \
+  --device cuda:0 \
+  --selfplay-devices cuda:1,cuda:2,cuda:3 \
+  --eval-devices cuda:1,cuda:2,cuda:3 \
+  --workers 36 \
+  --async-queue 64 \
+  --eval-workers 9 \
+  --games-per-iter 64 \
+  --sims 800 \
+  --eval-sims 400 \
+  --batch-size 512 \
+  --epoch 10 \
+  --replay-size 26000 \
+  --replay-sample 20000 \
+  --eval-games 20 \
+  --eval-every 5 \
+  --eval-threshold 0.55 \
+  --resume \
+  --model-path artifacts/az_model_v1.pt \
+  --lr 0.0002 \
+  --save-best \
+  --eval-temp 0.3 \
+  --eval-noise \
+  --train-forever
